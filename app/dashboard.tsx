@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { createGifFromImageUrls, triggerDownload } from "@/lib/export-gif";
 
 const SWPC = "https://services.swpc.noaa.gov";
 const STAR = "https://cdn.star.nesdis.noaa.gov";
@@ -118,6 +119,9 @@ export default function Dashboard() {
   const [wind, setWind] = useState<Point[]>([]);
   const [kp, setKp] = useState<Point[]>([]);
   const [telemetryLoading, setTelemetryLoading] = useState(true);
+  const [exportingGif, setExportingGif] = useState(false);
+  const [gifProgress, setGifProgress] = useState(0);
+  const [gifStatus, setGifStatus] = useState("");
   const viewerRef = useRef<HTMLDivElement>(null);
   const frameIndexRef = useRef(0);
   const imageCacheRef = useRef(new Map<string, Promise<boolean>>());
@@ -386,6 +390,39 @@ export default function Dashboard() {
     return telemetryLayers.find(([key]) => key === telemetryMode)?.[1];
   }, [mode, earthLayer, lightningLayer, solarLayer, hemisphere, telemetryMode]);
 
+  const handleDownloadGif = useCallback(async () => {
+    if (exportingGif || !frames.length) return;
+    setExportingGif(true);
+    setGifProgress(0);
+    setGifStatus("Preparing frames...");
+
+    try {
+      const urls = frames.map((f) => f.url);
+      const blob = await createGifFromImageUrls({
+        urls,
+        fps: playbackFps,
+        maxDimension: 720,
+        onProgress: (progress, _stage, detail) => {
+          setGifProgress(progress);
+          if (detail) setGifStatus(detail);
+        },
+      });
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      const layerName = (activeLayer || mode).toLowerCase().replace(/[^a-z0-9_-]/gi, "-");
+      const filename = `noaa-${mode}-${layerName}-${playbackFps}fps-${timestamp}.gif`;
+
+      triggerDownload(blob, filename);
+    } catch (err) {
+      console.error("Failed to export GIF:", err);
+      alert(err instanceof Error ? err.message : "Failed to generate GIF");
+    } finally {
+      setExportingGif(false);
+      setGifProgress(0);
+      setGifStatus("");
+    }
+  }, [exportingGif, frames, playbackFps, mode, activeLayer]);
+
   const tabItems = [["earth", "Earth", Globe2], ["lightning", "Lightning", Zap], ["sun", "Sun", Sun], ["aurora", "Aurora", CloudSun], ["telemetry", "Telemetry", Activity]] as const;
 
   return (
@@ -456,10 +493,30 @@ export default function Dashboard() {
                 <Button aria-label={playing ? "Pause animation" : "Play animation"} size="icon" className="size-10 rounded-lg bg-[#0b5cab] text-white hover:bg-[#084a8c]" disabled={frames.length < 2} onClick={togglePlayback}>{playing ? <Pause className="size-4 fill-current" /> : <Play className="ml-0.5 size-4 fill-current" />}</Button>
                 <Button variant="ghost" size="icon-sm" className="viewer-button" aria-label="Next frame" disabled={frames.length < 2} onClick={() => stepFrame(1)}><SkipForward /></Button>
               </div>
-              <div className="min-w-0 flex-1"><Slider aria-label="Observation timeline" min={0} max={Math.max(0, frames.length - 1)} step={1} value={[frameIndex]} disabled={!frames.length} onValueChange={(value) => { setPlaying(false); goToFrame(value[0] ?? 0); }} className="[&_[data-slot=slider-range]]:bg-[#0b5cab] [&_[data-slot=slider-thumb]]:border-[#0b5cab] [&_[data-slot=slider-track]]:bg-slate-200" /><div className="mt-2 flex justify-between font-mono text-[10px] text-slate-500"><span>{frameTime(frames[0])}</span><span>{preparedFrames < frames.length ? `Preparing ${preparedFrames}/${frames.length}` : playing ? `${playbackFps} FPS` : "Ready"}</span><span>Newest</span></div></div>
+              <div className="min-w-0 flex-1"><Slider aria-label="Observation timeline" min={0} max={Math.max(0, frames.length - 1)} step={1} value={[frameIndex]} disabled={!frames.length} onValueChange={(value) => { setPlaying(false); goToFrame(value[0] ?? 0); }} className="[&_[data-slot=slider-range]]:bg-[#0b5cab] [&_[data-slot=slider-thumb]]:border-[#0b5cab] [&_[data-slot=slider-track]]:bg-slate-200" /><div className="mt-2 flex justify-between font-mono text-[10px] text-slate-500"><span>{frameTime(frames[0])}</span><span>{exportingGif ? `${gifStatus} (${gifProgress}%)` : preparedFrames < frames.length ? `Preparing ${preparedFrames}/${frames.length}` : playing ? `${playbackFps} FPS` : "Ready"}</span><span>Newest</span></div></div>
               <div className="timeline-actions">
                 <label className="speed-select"><span>Speed</span><select aria-label="Animation speed in frames per second" value={playbackFps} onChange={(event) => setPlaybackFps(Number(event.target.value))}><option value={2}>2 FPS</option><option value={5}>5 FPS</option><option value={10}>10 FPS</option><option value={15}>15 FPS</option></select></label>
-                <Button variant="ghost" size="icon-sm" className="viewer-button" aria-label="Jump to newest frame" onClick={() => { setPlaying(false); goToFrame(Math.max(0, frames.length - 1)); }}><Radio /></Button>{currentFrame && <Button asChild variant="ghost" size="icon-sm" className="viewer-button" aria-label="Open or download current image"><a href={currentFrame.url} target="_blank" rel="noreferrer"><Download /></a></Button>}
+                <Button variant="ghost" size="icon-sm" className="viewer-button" aria-label="Jump to newest frame" onClick={() => { setPlaying(false); goToFrame(Math.max(0, frames.length - 1)); }}><Radio /></Button>
+                {frames.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size={exportingGif ? "sm" : "icon-sm"}
+                    className={`viewer-button transition-all ${exportingGif ? "px-2.5 font-mono text-[11px] font-semibold text-blue-600 bg-blue-50 border border-blue-200" : ""}`}
+                    aria-label={exportingGif ? `Generating GIF: ${gifProgress}%` : "Download image sequence as animated GIF"}
+                    title={exportingGif ? `${gifStatus} (${gifProgress}%)` : "Download sequence as animated GIF"}
+                    disabled={exportingGif}
+                    onClick={handleDownloadGif}
+                  >
+                    {exportingGif ? (
+                      <span className="flex items-center gap-1.5">
+                        <LoaderCircle className="size-3.5 animate-spin text-blue-600" />
+                        <span>{gifProgress}%</span>
+                      </span>
+                    ) : (
+                      <Download />
+                    )}
+                  </Button>
+                )}
               </div>
             </div>
           </>}
