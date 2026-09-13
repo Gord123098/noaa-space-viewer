@@ -159,13 +159,21 @@ export default function Dashboard() {
         const base = mode === "lightning"
           ? `${STAR}/GOES${satelliteId}/GLM/${sourceRegion}/${lightningLayer}/`
           : `${STAR}/GOES${satelliteId}/ABI/${sourceRegion}/${earthLayer}/`;
-        const html = await fetch(`${base}?v=${Date.now()}`).then((r) => {
-          if (!r.ok) throw new Error("NOAA imagery is temporarily unavailable");
-          return r.text();
-        });
-        const expression = new RegExp(`href="([0-9][^"]*-${size}\\.jpg)"`, "g");
-        const names = Array.from(html.matchAll(expression), (match) => match[1]);
-        nextFrames = names.slice(-48).map((name) => ({ url: `${base}${name}`, time: parseEarthTime(name) }));
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 8000);
+        try {
+          const html = await fetch(`${base}?v=${Date.now()}`, { signal: controller.signal }).then((r) => {
+            if (!r.ok) throw new Error("NOAA imagery is temporarily unavailable");
+            return r.text();
+          });
+          const expression = new RegExp(`href="([0-9][^"]*-${size}\\.jpg)"`, "g");
+          const names = Array.from(html.matchAll(expression), (match) => match[1]);
+          nextFrames = names.slice(-48).map((name) => ({ url: `${base}${name}`, time: parseEarthTime(name) }));
+        } catch {
+          // NOAA's directory listing can occasionally stall even when its current image is available.
+        } finally {
+          window.clearTimeout(timeout);
+        }
         if (!nextFrames.length) nextFrames = [{ url: `${base}${size}.jpg`, time: new Date().toISOString() }];
       } else if (mode === "sun") {
         let endpoint = `/products/animations/suvi-primary-${solarLayer}.json`;
