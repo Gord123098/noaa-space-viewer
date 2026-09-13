@@ -199,6 +199,7 @@ export default function Dashboard() {
       }
       const newest = Math.max(0, nextFrames.length - 1);
       setFrames(nextFrames); frameIndexRef.current = newest; setFrameIndex(newest);
+      setPlaying(nextFrames.length > 1);
     } catch (error) {
       setFrames([]); setFrameError(error instanceof Error ? error.message : "Unable to load this NOAA feed");
     } finally { setLoadingFrames(false); }
