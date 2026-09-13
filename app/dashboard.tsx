@@ -159,6 +159,10 @@ export default function Dashboard() {
         const base = mode === "lightning"
           ? `${STAR}/GOES${satelliteId}/GLM/${sourceRegion}/${lightningLayer}/`
           : `${STAR}/GOES${satelliteId}/ABI/${sourceRegion}/${earthLayer}/`;
+        const fallbackFrame = { url: `${base}${size}.jpg`, time: new Date().toISOString() };
+        setFrames([fallbackFrame]);
+        frameIndexRef.current = 0;
+        setFrameIndex(0);
         const controller = new AbortController();
         const timeout = window.setTimeout(() => controller.abort(), 8000);
         try {
@@ -174,7 +178,7 @@ export default function Dashboard() {
         } finally {
           window.clearTimeout(timeout);
         }
-        if (!nextFrames.length) nextFrames = [{ url: `${base}${size}.jpg`, time: new Date().toISOString() }];
+        if (!nextFrames.length) nextFrames = [fallbackFrame];
       } else if (mode === "sun") {
         let endpoint = `/products/animations/suvi-primary-${solarLayer}.json`;
         if (solarLayer === "ccor1") endpoint = "/products/animations/ccor1/ccor1.json";
@@ -439,9 +443,9 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="relative flex min-h-[370px] flex-1 items-center justify-center overflow-auto bg-black sm:min-h-[500px]">
-                {loadingFrames && <div className="loading-state"><LoaderCircle className="size-5 animate-spin" /><span>Acquiring NOAA feed</span></div>}
+                {loadingFrames && !currentFrame && <div className="loading-state"><LoaderCircle className="size-5 animate-spin" /><span>Acquiring NOAA feed</span></div>}
                 {!loadingFrames && frameError && <div className="max-w-sm p-8 text-center"><CircleAlert className="mx-auto mb-3 size-6 text-amber-500" /><p className="text-sm text-slate-300">{frameError}</p><button className="mt-3 text-xs text-blue-400 hover:underline" onClick={loadFrames}>Try again</button></div>}
-                {!loadingFrames && currentFrame && <img src={currentFrame.url} decoding="async" alt={`${activeLayer} NOAA observation at ${frameTime(currentFrame)}`} className={`noaa-frame block max-h-[68vh] max-w-full object-contain transition-transform duration-200 ${mode === "sun" ? "solar-frame" : ""}`} style={{ transform: `scale(${zoom})` }} />}
+                {currentFrame && <img src={currentFrame.url} decoding="async" alt={`${activeLayer} NOAA observation at ${frameTime(currentFrame)}`} className={`noaa-frame block max-h-[68vh] max-w-full object-contain transition-transform duration-200 ${mode === "sun" ? "solar-frame" : ""}`} style={{ transform: `scale(${zoom})` }} />}
                 {buffering && <div className="buffering-chip"><LoaderCircle className="size-3 animate-spin" /> Buffering next frame</div>}
                 <div className="absolute bottom-3 left-3 rounded-md border border-white/10 bg-black/60 px-2.5 py-1.5 font-mono text-[10px] text-slate-300 backdrop-blur-md">{activeLayer} · frame {frames.length ? frameIndex + 1 : 0}/{frames.length}</div>
               </div>
