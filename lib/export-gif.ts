@@ -99,7 +99,9 @@ export async function createGifFromImageUrls({
 
   gif.finish();
   const bytes = gif.bytes();
-  return new Blob([bytes], { type: "image/gif" });
+  const output = new Uint8Array(bytes.byteLength);
+  output.set(bytes);
+  return new Blob([output.buffer], { type: "image/gif" });
 }
 
 async function loadImageSafe(url: string): Promise<HTMLImageElement> {
