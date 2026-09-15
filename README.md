@@ -2,6 +2,8 @@
 
 A browser-based dashboard for current NOAA satellite imagery and space-weather observations.
 
+**[Open the live NOAA viewer](https://gord123098.github.io/noaa-space-viewer/)**
+
 ## Features
 
 - GOES East and West Earth imagery with regional and full-disk views
